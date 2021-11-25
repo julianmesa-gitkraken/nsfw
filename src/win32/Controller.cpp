@@ -54,7 +54,7 @@ HANDLE Controller::openDirectory(const std::wstring &path) {
          );
 }
 
-Controller::Controller(std::shared_ptr<EventQueue> queue, const std::string &path)
+Controller::Controller(std::shared_ptr<EventQueue> queue, const std::string &path, std::vector<std::string> &excludedPaths)
   : mDirectoryHandle(INVALID_HANDLE_VALUE)
 {
   auto widePath = convertMultiByteToWideChar(path);
@@ -69,7 +69,20 @@ Controller::Controller(std::shared_ptr<EventQueue> queue, const std::string &pat
     return;
   }
 
-  mWatcher.reset(new Watcher(queue, mDirectoryHandle, widePath, isNt));
+  std::vector<std::wstring> wExcludedPaths;
+  for (std::string &excludedPath : excludedPaths) {
+    if (excludedPath.back() == '/') {
+      excludedPath.pop_back();
+    }
+    std::wstring wExcludedPath = convertMultiByteToWideChar(excludedPath);
+    if (!isNtPath(wExcludedPath)) {
+      // We convert to an NT Path to support paths > MAX_PATH
+      wExcludedPath = prefixWithNtPath(wExcludedPath);
+    }
+    wExcludedPaths.push_back(wExcludedPath);
+  }
+
+  mWatcher.reset(new Watcher(queue, mDirectoryHandle, widePath, isNt, wExcludedPaths));
 }
 
 Controller::~Controller() {
