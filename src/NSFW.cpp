@@ -266,12 +266,15 @@ void NSFW::pollForEvents() {
       std::lock_guard<std::mutex> lock(mInterfaceLock);
 
       if (mInterface->hasErrored()) {
-        const std::string &error = mInterface->getError();
-        mErrorCallback.NonBlockingCall([error](Napi::Env env, Napi::Function jsCallback) {
+        const std::string error = mInterface->getError();
+        mErrorCallback.NonBlockingCall([&error](Napi::Env env, Napi::Function jsCallback) {
           Napi::Value jsError = Napi::Error::New(env, error).Value();
           jsCallback.Call({ jsError });
         });
         mRunning = false;
+        mInterface.reset(nullptr);
+        mPollThread.detach();
+        Unref();
         break;
       }
 
