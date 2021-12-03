@@ -4,9 +4,10 @@
 /**
  * InotifyTree ---------------------------------------------------------------------------------------------------------
  */
-InotifyTree::InotifyTree(int inotifyInstance, std::string path):
+InotifyTree::InotifyTree(int inotifyInstance, std::string path, const std::vector<std::string> &excludedPaths):
   mError(""),
-  mInotifyInstance(inotifyInstance) {
+  mInotifyInstance(inotifyInstance),
+  mExcludedPaths(excludedPaths) {
   mInotifyNodeByWatchDescriptor = new std::map<int, InotifyNode *>;
   std::string directory;
   std::string watchName;
@@ -68,6 +69,10 @@ bool InotifyTree::getPath(std::string &out, int wd) {
 
   out = nodeIterator->second->getFullPath();
   return true;
+}
+
+const std::vector<std::string>& InotifyTree::getExcludedPaths() const {
+  return mExcludedPaths;
 }
 
 bool InotifyTree::hasErrored() {
@@ -158,7 +163,7 @@ InotifyTree::InotifyNode::InotifyNode(
   InotifyTree *tree,
   int inotifyInstance,
   InotifyNode *parent,
-  std::string directory,
+  const std::string &directory,
   std::string name,
   ino_t inodeNumber,
   EmitCreatedEvent emitCreatedEvent
@@ -203,6 +208,17 @@ InotifyTree::InotifyNode::InotifyNode(
       fileName == "." ||
       fileName == ".."
     ) {
+      continue;
+    }
+
+    bool excludedFound = false;
+    for (std::string excludedPath : mTree->getExcludedPaths()) {
+      if ((mFullPath + '/' + fileName).compare(excludedPath) == 0) {
+        excludedFound = true;
+        break;
+      }
+    }
+    if(excludedFound) {
       continue;
     }
 
@@ -291,7 +307,6 @@ void InotifyTree::InotifyNode::fixPaths() {
     return;
   }
 
-  mDirectory = parentPath;
   mFullPath = fullPath;
 
   for(auto i = mChildren->begin(); i != mChildren->end(); ++i) {
@@ -386,7 +401,9 @@ void InotifyTree::InotifyNode::setParent(InotifyNode *newParent) {
 
 std::string InotifyTree::InotifyNode::createFullPath(std::string parentPath, std::string name) {
   std::stringstream fullPathStream;
-
+  if (name == "") {
+    return parentPath;
+  }
   fullPathStream
     << parentPath
     << '/'

@@ -26,6 +26,7 @@ class NSFW : public Napi::ObjectWrap<NSFW> {
     std::string mPath;
     std::thread mPollThread;
     std::atomic<bool> mRunning;
+    std::vector<std::string> mExcludedPaths;
 
     class StartWorker: public Napi::AsyncWorker {
       public:

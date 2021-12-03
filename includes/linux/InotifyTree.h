@@ -21,7 +21,7 @@ using EmitCreatedEvent = std::function<void(std::string, std::string)>;
 
 class InotifyTree {
 public:
-  InotifyTree(int inotifyInstance, std::string path);
+  InotifyTree(int inotifyInstance, std::string path, const std::vector<std::string> &excludedPaths);
 
   void addDirectory(int wd, std::string name, EmitCreatedEvent emitCreatedEvent = nullptr);
   std::string getError();
@@ -31,6 +31,7 @@ public:
   bool nodeExists(int wd);
   void removeDirectory(int wd);
   void renameDirectory(int fromWd, std::string fromName, int toWd, std::string toName);
+  const std::vector<std::string>& getExcludedPaths() const;
 
   ~InotifyTree();
 private:
@@ -40,7 +41,7 @@ private:
       InotifyTree *tree,
       int inotifyInstance,
       InotifyNode *parent,
-      std::string directory,
+      const std::string &directory,
       std::string name,
       ino_t inodeNumber,
       EmitCreatedEvent emitCreatedEvent = nullptr
@@ -74,7 +75,7 @@ private:
 
     bool mAlive;
     std::map<std::string, InotifyNode *> *mChildren;
-    std::string mDirectory;
+    const std::string &mDirectory;
     std::string mFullPath;
     ino_t mInodeNumber;
     const int mInotifyInstance;
@@ -96,6 +97,7 @@ private:
   std::map<int, InotifyNode *> *mInotifyNodeByWatchDescriptor;
   std::unordered_set<ino_t> inodes;
   InotifyNode *mRoot;
+  const std::vector<std::string> &mExcludedPaths;
 
   friend class InotifyNode;
 };

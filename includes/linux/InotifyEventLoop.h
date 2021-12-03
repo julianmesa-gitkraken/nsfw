@@ -12,6 +12,7 @@
 #include <sys/select.h>
 #include <string>
 #include <mutex>
+#include <unicode/ucnv.h>
 
 class InotifyService;
 class Lock;
@@ -45,6 +46,9 @@ private:
   std::mutex mMutex;
   SingleshotSemaphore mLoopingSemaphore;
   bool mStarted;
+  UConverter *mUnicodeConverter;
+
+  bool isValidName(std::string name);
 };
 
 #endif

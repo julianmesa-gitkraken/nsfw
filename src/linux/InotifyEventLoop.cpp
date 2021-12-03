@@ -7,6 +7,8 @@ InotifyEventLoop::InotifyEventLoop(
   mInotifyInstance(inotifyInstance),
   mInotifyService(inotifyService)
 {
+  UErrorCode status = U_ZERO_ERROR;
+  mUnicodeConverter = ucnv_open("utf-8", &status);
   mStarted = !pthread_create(
     &mEventLoop,
     NULL,
@@ -108,7 +110,7 @@ void InotifyEventLoop::work() {
       isDirectoryRemoval = event->mask & (uint32_t)(IN_IGNORED | IN_DELETE_SELF);
       isDirectoryEvent = event->mask & (uint32_t)(IN_ISDIR);
 
-      if (!isDirectoryRemoval && *event->name <= 31) {
+      if (!isDirectoryRemoval && !isValidName(event->name)) {
         continue;
       }
 
@@ -144,6 +146,15 @@ void InotifyEventLoop::work() {
     position = 0;
   }
   mStarted = false;
+}
+
+bool InotifyEventLoop::isValidName(std::string name) {
+  UErrorCode status = U_ZERO_ERROR;
+  int targetLimit = 3 * name.size();
+  UChar *target = new UChar[targetLimit];
+  ucnv_toUChars(mUnicodeConverter, target, targetLimit, name.c_str(), -1, &status);
+  delete[] target;
+  return status == U_ZERO_ERROR;
 }
 
 InotifyEventLoop::~InotifyEventLoop() {
