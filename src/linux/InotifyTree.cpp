@@ -94,6 +94,7 @@ void InotifyTree::removeDirectory(int wd) {
   if (parent == NULL) {
     delete mRoot;
     mRoot = NULL;
+    setError("Service shutdown: root path changed (renamed or deleted)");
     return;
   }
 
