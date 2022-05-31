@@ -235,14 +235,7 @@ void Watcher::eventCallback(DWORD errorCode) {
 }
 
 bool Watcher::isExcluded(const std::wstring &fileName) {
-  std::wstring::size_type found = fileName.rfind('\\');
-
-  std::wstring path;
-  if (found != std::wstring::npos) {
-    path = mPath + L"\\" + fileName.substr(0, found);
-  } else {
-    path = mPath + L"\\" + fileName;
-  }
+  std::wstring path = mPath + L"\\" + fileName;
   for (const std::wstring &excludePath : mExcludedPaths) {
     if (path.size() >= excludePath.size() &&
       CompareStringEx(
@@ -258,6 +251,7 @@ bool Watcher::isExcluded(const std::wstring &fileName) {
       return true;
     }
   }
+
   return false;
 }
 
@@ -397,6 +391,6 @@ void Watcher::checkWatchedPath() {
   }
 }
 
-void Watcher::refreshExcludedPaths(const std::vector<std::wstring> &excludedPaths) {
+void Watcher::updateExcludedPaths(const std::vector<std::wstring> &excludedPaths) {
   mExcludedPaths = excludedPaths;
 }
