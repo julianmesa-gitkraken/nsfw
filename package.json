@@ -33,10 +33,10 @@
     "node-addon-api": "^5.0.0"
   },
   "devDependencies": {
-    "eslint": "^6.8.0",
+    "eslint": "^8.56.0",
     "executive": "^1.6.3",
-    "fs-extra": "^7.0.0",
-    "mocha": "^7.1.1"
+    "fs-extra": "^11.2.0",
+    "mocha": "^10.4.0"
   },
   "keywords": [
     "FileWatcher",
