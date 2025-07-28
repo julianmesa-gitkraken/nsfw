@@ -99,7 +99,6 @@ NSFW::NSFW(const Napi::CallbackInfo &info):
 
 NSFW::~NSFW() {
   if (mRunning) {
-    mFinalizing = true;
     {
       std::lock_guard<std::mutex> lock(mRunningLock);
       mRunning = false;
@@ -212,6 +211,10 @@ void NSFW::StopWorker::Execute() {
   }
   mNSFW->mWaitPoolEvents.notify_one();
   mNSFW->mPollThread.join();
+
+  // Release ThreadSafeFunction callbacks to prevent keeping event loop alive
+  mNSFW->mErrorCallback.Release();
+  mNSFW->mEventCallback.Release();
 
   std::lock_guard<std::mutex> lock(mNSFW->mInterfaceLock);
   mNSFW->mInterface.reset(nullptr);
@@ -442,13 +445,6 @@ void NSFW::pollForEvents() {
         return !mRunning || std::chrono::steady_clock::now() >= waitUntil;
       }
     );
-  }
-
-  // If we are destroying NFSW object (destructor) we cannot release the thread safe functions at this point
-  // or we get a segfault
-  if (!mFinalizing) {
-    mErrorCallback.Release();
-    mEventCallback.Release();
   }
 }
 
