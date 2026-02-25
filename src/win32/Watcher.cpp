@@ -105,13 +105,21 @@ std::string getUTF8FileName(std::wstring path) {
 }
 
 Watcher::Watcher(std::shared_ptr<EventQueue> queue, const std::wstring &path, bool pathWasNtPrefixed,
-    const std::vector<std::wstring> &excludedPaths)
+    const std::vector<std::wstring> &excludedPaths,
+    bool respectGitignore, const std::string &utf8Path,
+    const std::string &globalGitignorePath)
   : mRunning(false),
   mQueue(queue),
   mPath(path),
   mPathWasNtPrefixed(pathWasNtPrefixed),
-  mExcludedPaths(excludedPaths)
+  mExcludedPaths(excludedPaths),
+  mUtf8Path(utf8Path)
 {
+  if (respectGitignore) {
+    // Windows is always case-insensitive (Decision #7)
+    mGitignoreManager.reset(new GitignoreManager(utf8Path, globalGitignorePath, false));
+  }
+
   mDirectoryHandle = openDirectory(mPath);
   if (mDirectoryHandle == INVALID_HANDLE_VALUE) {
     setError("Failed to open directory");
@@ -234,6 +242,17 @@ void Watcher::eventCallback(DWORD errorCode) {
   handleEvents();
 }
 
+static std::string wideToUtf8(const std::wstring &wide) {
+  if (wide.empty()) return "";
+  int utf8length = WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, 0, 0, NULL, NULL);
+  if (utf8length == 0) return "";
+  char *utf8CString = new char[utf8length];
+  WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, utf8CString, utf8length, NULL, NULL);
+  std::string result = utf8CString;
+  delete[] utf8CString;
+  return result;
+}
+
 bool Watcher::isExcluded(const std::wstring &fileName) {
   std::wstring::size_type found = fileName.rfind('\\');
 
@@ -258,6 +277,24 @@ bool Watcher::isExcluded(const std::wstring &fileName) {
       return true;
     }
   }
+
+  // Gitignore filtering (additive with excludedPaths, Decision #5)
+  if (mGitignoreManager && mGitignoreManager->isActive()) {
+    // Convert the relative wstring path to UTF-8 and build full path
+    std::string utf8RelPath = wideToUtf8(fileName);
+    // Replace backslashes with forward slashes for gitignore matching
+    for (char &c : utf8RelPath) {
+      if (c == '\\') c = '/';
+    }
+    std::string fullUtf8Path = mUtf8Path + "/" + utf8RelPath;
+    // We don't know if it's a directory from FILE_NOTIFY_INFORMATION,
+    // so check as file (false). Directory-only patterns won't match,
+    // which is the conservative behavior.
+    if (mGitignoreManager->isIgnored(fullUtf8Path, false)) {
+      return true;
+    }
+  }
+
   return false;
 }
 
@@ -276,6 +313,16 @@ void Watcher::handleEvents() {
           if (info->Action == FILE_ACTION_RENAMED_NEW_NAME) {
             std::wstring fileNameNew = getWStringFileName(info->FileName, info->FileNameLength);
 
+            // Detect .gitignore being renamed (Decision #1: dynamic reaction)
+            if (mGitignoreManager && mGitignoreManager->isActive()) {
+              if (isGitignoreFile(fileName)) {
+                mGitignoreManager->removeGitignore(getUTF8Directory(fileName));
+              }
+              if (isGitignoreFile(fileNameNew)) {
+                mGitignoreManager->addOrUpdateGitignore(getUTF8Directory(fileNameNew));
+              }
+            }
+
             mQueue->enqueue(
               RENAMED,
               getUTF8Directory(fileName),
@@ -292,13 +339,25 @@ void Watcher::handleEvents() {
         break;
       case FILE_ACTION_ADDED:
       case FILE_ACTION_RENAMED_NEW_NAME: // in the case we just receive a new name and no old name in the buffer
+        // Detect .gitignore file creation (Decision #1: dynamic reaction)
+        if (isGitignoreFile(fileName)) {
+          mGitignoreManager->addOrUpdateGitignore(getUTF8Directory(fileName));
+        }
         mQueue->enqueue(CREATED, getUTF8Directory(fileName), getUTF8FileName(fileName));
         break;
       case FILE_ACTION_REMOVED:
+        // Detect .gitignore file deletion (Decision #1: dynamic reaction)
+        if (isGitignoreFile(fileName)) {
+          mGitignoreManager->removeGitignore(getUTF8Directory(fileName));
+        }
         mQueue->enqueue(DELETED, getUTF8Directory(fileName), getUTF8FileName(fileName));
         break;
       case FILE_ACTION_MODIFIED:
       default:
+        // Detect .gitignore file modification (Decision #1: dynamic reaction)
+        if (isGitignoreFile(fileName)) {
+          mGitignoreManager->addOrUpdateGitignore(getUTF8Directory(fileName));
+        }
         mQueue->enqueue(MODIFIED, getUTF8Directory(fileName), getUTF8FileName(fileName));
       };
     }
@@ -308,6 +367,16 @@ void Watcher::handleEvents() {
     }
     base += info->NextEntryOffset;
   }
+}
+
+bool Watcher::isGitignoreFile(const std::wstring &fileName) {
+  if (!mGitignoreManager || !mGitignoreManager->isActive()) {
+    return false;
+  }
+  // Extract just the filename part (after last backslash)
+  std::wstring::size_type found = fileName.rfind('\\');
+  std::wstring name = (found != std::wstring::npos) ? fileName.substr(found + 1) : fileName;
+  return name == L".gitignore";
 }
 
 void Watcher::start() {

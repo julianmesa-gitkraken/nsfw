@@ -10,12 +10,15 @@
 
 #include "../SingleshotSemaphore.h"
 #include "../Queue.h"
+#include "../../includes/GitignoreManager.h"
 
 class Watcher
 {
   public:
     Watcher(std::shared_ptr<EventQueue> queue, const std::wstring &path, bool pathWasNtPrefixed,
-      const std::vector<std::wstring> &excludedPaths);
+      const std::vector<std::wstring> &excludedPaths,
+      bool respectGitignore = false, const std::string &utf8Path = "",
+      const std::string &globalGitignorePath = "");
     ~Watcher();
 
     bool isRunning() const { return mRunning; }
@@ -38,6 +41,7 @@ class Watcher
 
     std::string getUTF8Directory(std::wstring path) ;
     bool isExcluded(const std::wstring &fileName);
+    bool isGitignoreFile(const std::wstring &fileName);
 
     std::wstring getWatchedPathFromHandle();
     void checkWatchedPath();
@@ -60,6 +64,9 @@ class Watcher
     OVERLAPPED mOverlapped;
 
     std::thread mRunner;
+
+    std::string mUtf8Path;
+    std::unique_ptr<GitignoreManager> mGitignoreManager;
 };
 
 

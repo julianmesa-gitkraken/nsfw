@@ -39,7 +39,8 @@ static std::wstring convertMultiByteToWideChar(const std::string &multiByte) {
   return wideString;
 }
 
-Controller::Controller(std::shared_ptr<EventQueue> queue, const std::string &path, const std::vector<std::string> &excludedPaths) {
+Controller::Controller(std::shared_ptr<EventQueue> queue, const std::string &path, const std::vector<std::string> &excludedPaths,
+  bool respectGitignore, const std::string &globalGitignorePath) {
   auto widePath = convertMultiByteToWideChar(path);
   const bool isNt = isNtPath(widePath);
   if (!isNt) {
@@ -58,7 +59,7 @@ Controller::Controller(std::shared_ptr<EventQueue> queue, const std::string &pat
     excludedWidePaths.push_back(widePath);
   }
 
-  mWatcher.reset(new Watcher(queue, widePath, isNt, excludedWidePaths));
+  mWatcher.reset(new Watcher(queue, widePath, isNt, excludedWidePaths, respectGitignore, path, globalGitignorePath));
 }
 
 Controller::~Controller() {
