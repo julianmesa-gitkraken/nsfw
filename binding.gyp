@@ -48,7 +48,7 @@
                     "GCC_SYMBOLS_PRIVATE_EXTERN": "YES", # -fvisibility=hidden
                     "MACOSX_DEPLOYMENT_TARGET": "10.7",
                     "OTHER_CFLAGS": [
-                        "-std=c++11",
+                        "-std=c++17",
                         "-stdlib=libc++"
                     ],
                 },
@@ -74,7 +74,7 @@
                 ],
                 "cflags": [
                     "-Wno-unknown-pragmas",
-                    "-std=c++11"
+                    "-std=c++17"
                 ]
             }],
             ["OS=='win'", {
