@@ -68,6 +68,10 @@ declare module 'nsfw' {
             errorCallback?: (err: any) => void;
             /** paths to be excluded */
             excludedPaths?: string[];
+            /** whether to respect .gitignore files for filtering events */
+            respectGitignore?: boolean;
+            /** custom path to a global gitignore file (overrides platform defaults) */
+            globalGitignorePath?: string;
         }
     }
 

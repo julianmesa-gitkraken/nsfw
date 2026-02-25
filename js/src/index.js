@@ -53,7 +53,7 @@ function NSFWFilePoller(watchPath, eventCallback, debounceMS) {
 const buildNSFW = async (
   watchPath,
   eventCallback,
-  { debounceMS = 500, errorCallback: _errorCallback, excludedPaths = [] } = {}
+  { debounceMS = 500, errorCallback: _errorCallback, excludedPaths = [], respectGitignore = false, globalGitignorePath } = {}
 ) => {
   if (Number.isInteger(debounceMS)) {
     if (debounceMS < 1 || debounceMS > 60000) {
@@ -107,11 +107,16 @@ const buildNSFW = async (
   }
 
   if (stats.isDirectory()) {
-    return new NSFW(watchPath, eventCallback, {
+    const nsfwOptions = {
       debounceMS,
       errorCallback,
       excludedPaths,
-    });
+      respectGitignore,
+    };
+    if (globalGitignorePath !== undefined) {
+      nsfwOptions.globalGitignorePath = globalGitignorePath;
+    }
+    return new NSFW(watchPath, eventCallback, nsfwOptions);
   } else if (stats.isFile()) {
     return new NSFWFilePoller(watchPath, eventCallback, debounceMS);
   } else {
