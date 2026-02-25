@@ -3,11 +3,14 @@
 #include <sys/inotify.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <memory>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
 #include <functional>
 #include <string>
+
+#include "../../includes/GitignoreManager.h"
 
 /**
  * void EmitCreatedEvent(std::string directory, std::string file);
@@ -16,7 +19,8 @@ using EmitCreatedEvent = std::function<void(std::string, std::string)>;
 
 class InotifyTree {
 public:
-  InotifyTree(int inotifyInstance, std::string path, const std::vector<std::string> &excludedPaths);
+  InotifyTree(int inotifyInstance, std::string path, const std::vector<std::string> &excludedPaths,
+    bool respectGitignore = false, const std::string &globalGitignorePath = "");
 
   void addDirectory(int wd, std::string name, EmitCreatedEvent emitCreatedEvent = nullptr);
   std::string getError();
@@ -28,6 +32,7 @@ public:
   void renameDirectory(int fromWd, std::string fromName, int toWd, std::string toName);
   const std::vector<std::string>& getExcludedPaths() const;
   void updateExcludedPaths(const std::vector<std::string> &excludedPaths);
+  std::shared_ptr<GitignoreManager> getGitignoreManager() const;
 
   ~InotifyTree();
 private:
@@ -67,6 +72,7 @@ private:
   std::vector<std::string> mExcludedPaths;
   std::unordered_set<std::string> mExcludedPathsSet;
   std::string mWatchedPath;
+  std::shared_ptr<GitignoreManager> mGitignoreManager;
 };
 
 #endif

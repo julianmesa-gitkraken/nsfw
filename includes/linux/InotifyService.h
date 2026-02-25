@@ -12,7 +12,8 @@ class InotifyTree;
 
 class InotifyService {
 public:
-  InotifyService(std::shared_ptr<EventQueue> queue, std::string path, const std::vector<std::string> &excludedPaths);
+  InotifyService(std::shared_ptr<EventQueue> queue, std::string path, const std::vector<std::string> &excludedPaths,
+    bool respectGitignore = false, const std::string &globalGitignorePath = "");
 
   std::string getError();
   bool hasErrored();

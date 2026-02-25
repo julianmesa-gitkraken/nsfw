@@ -5,7 +5,8 @@
 
 namespace fs = std::filesystem;
 
-InotifyTree::InotifyTree(int inotifyInstance, std::string path, const std::vector<std::string> &excludedPaths):
+InotifyTree::InotifyTree(int inotifyInstance, std::string path, const std::vector<std::string> &excludedPaths,
+  bool respectGitignore, const std::string &globalGitignorePath):
   mError(""),
   mInotifyInstance(inotifyInstance),
   mRootWd(-1) {
@@ -17,6 +18,10 @@ InotifyTree::InotifyTree(int inotifyInstance, std::string path, const std::vecto
     const std::string normalizedPath = normalizePath(excludedPath);
     mExcludedPaths.push_back(normalizedPath);
     mExcludedPathsSet.insert(normalizedPath);
+  }
+
+  if (respectGitignore) {
+    mGitignoreManager = std::make_shared<GitignoreManager>(mWatchedPath, globalGitignorePath);
   }
 
   struct stat file;
@@ -109,6 +114,23 @@ bool InotifyTree::addDirectoryTree(const std::string &rootPath, EmitCreatedEvent
         continue;
       }
 
+      // Gitignore filtering: skip ignored paths (proactive exclusion saves inotify watches)
+      if (mGitignoreManager && mGitignoreManager->isActive() && mGitignoreManager->isIgnored(entryPath, isDirectory)) {
+        if (isDirectory) {
+          iterator.disable_recursion_pending();
+        }
+        continue;
+      }
+
+      // Detect .gitignore files during initial scan so rules are available for subsequent entries
+      if (!isDirectory && mGitignoreManager && mGitignoreManager->isActive()) {
+        const std::string fileName = entry.path().filename().string();
+        if (fileName == ".gitignore") {
+          const std::string dirPath = normalizePath(entry.path().parent_path().string());
+          mGitignoreManager->addOrUpdateGitignore(dirPath);
+        }
+      }
+
       if (emitCreatedEvent) {
         emitCreatedEvent(
           normalizePath(entry.path().parent_path().string()),
@@ -147,8 +169,22 @@ void InotifyTree::addDirectory(int wd, std::string name, EmitCreatedEvent emitCr
     return;
   }
 
+  // Gitignore filtering for runtime-created directories
+  if (mGitignoreManager && mGitignoreManager->isActive() && mGitignoreManager->isIgnored(childPath, true)) {
+    return;
+  }
+
   if (!addDirectoryWatch(childPath, false)) {
     return;
+  }
+
+  // Check if the new directory contains a .gitignore file
+  if (mGitignoreManager && mGitignoreManager->isActive()) {
+    const std::string gitignorePath = childPath + "/.gitignore";
+    struct stat fileStat;
+    if (stat(gitignorePath.c_str(), &fileStat) == 0 && S_ISREG(fileStat.st_mode)) {
+      mGitignoreManager->addOrUpdateGitignore(childPath);
+    }
   }
 
   addDirectoryTree(childPath, emitCreatedEvent);
@@ -170,6 +206,10 @@ bool InotifyTree::getPath(std::string &out, int wd) {
 
 const std::vector<std::string>& InotifyTree::getExcludedPaths() const {
   return mExcludedPaths;
+}
+
+std::shared_ptr<GitignoreManager> InotifyTree::getGitignoreManager() const {
+  return mGitignoreManager;
 }
 
 bool InotifyTree::hasErrored() {
