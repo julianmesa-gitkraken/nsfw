@@ -1,7 +1,8 @@
 #include "../includes/NativeInterface.h"
 
-NativeInterface::NativeInterface(const std::string &path, const std::vector<std::string> &excludedPaths, std::shared_ptr<EventQueue> queue) {
-  mNativeInterface.reset(new NativeImplementation(queue, path, excludedPaths));
+NativeInterface::NativeInterface(const std::string &path, const std::vector<std::string> &excludedPaths, std::shared_ptr<EventQueue> queue,
+  bool respectGitignore, const std::string &globalGitignorePath) {
+  mNativeInterface.reset(new NativeImplementation(queue, path, excludedPaths, respectGitignore, globalGitignorePath));
 }
 
 NativeInterface::~NativeInterface() {

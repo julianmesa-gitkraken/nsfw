@@ -29,6 +29,8 @@ class NSFW : public Napi::ObjectWrap<NSFW> {
     std::condition_variable mWaitPoolEvents;
     std::mutex mRunningLock;
     std::vector<std::string> mExcludedPaths;
+    bool mRespectGitignore;
+    std::string mGlobalGitignorePath;
     void updateExcludedPaths();
 
     class StartWorker: public Napi::AsyncWorker {

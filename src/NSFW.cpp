@@ -9,7 +9,8 @@ NSFW::NSFW(const Napi::CallbackInfo &info):
   mInterface(nullptr),
   mQueue(std::make_shared<EventQueue>()),
   mPath(""),
-  mRunning(false)
+  mRunning(false),
+  mRespectGitignore(false)
 {
   Napi::Env env = info.Env();
 
@@ -100,6 +101,24 @@ NSFW::NSFW(const Napi::CallbackInfo &info):
       }
     }
 
+    // respectGitignore (Decision #8: immutable at creation time)
+    Napi::Value maybeRespectGitignore = options["respectGitignore"];
+    if (options.Has("respectGitignore") && !maybeRespectGitignore.IsBoolean() && !maybeRespectGitignore.IsUndefined()) {
+      throw Napi::TypeError::New(env, "options.respectGitignore must be a boolean.");
+    }
+    if (maybeRespectGitignore.IsBoolean()) {
+      mRespectGitignore = maybeRespectGitignore.ToBoolean().Value();
+    }
+
+    // globalGitignorePath
+    Napi::Value maybeGlobalGitignorePath = options["globalGitignorePath"];
+    if (options.Has("globalGitignorePath") && !maybeGlobalGitignorePath.IsString() && !maybeGlobalGitignorePath.IsUndefined()) {
+      throw Napi::TypeError::New(env, "options.globalGitignorePath must be a string.");
+    }
+    if (maybeGlobalGitignorePath.IsString()) {
+      mGlobalGitignorePath = maybeGlobalGitignorePath.ToString().Utf8Value();
+    }
+
   }
 
   if (gcEnabled) {
@@ -146,7 +165,7 @@ void NSFW::StartWorker::Execute() {
   }
 
   mNSFW->mQueue->clear();
-  mNSFW->mInterface.reset(new NativeInterface(mNSFW->mPath, mNSFW->mExcludedPaths, mNSFW->mQueue));
+  mNSFW->mInterface.reset(new NativeInterface(mNSFW->mPath, mNSFW->mExcludedPaths, mNSFW->mQueue, mNSFW->mRespectGitignore, mNSFW->mGlobalGitignorePath));
 
   if (mNSFW->mInterface->isWatching()) {
     mStatus = STARTED;
