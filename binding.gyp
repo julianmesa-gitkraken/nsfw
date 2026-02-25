@@ -7,7 +7,10 @@
         "sources": [
             "src/NSFW.cpp",
             "src/Queue.cpp",
-            "src/NativeInterface.cpp"
+            "src/NativeInterface.cpp",
+            "src/GitignoreParser.cpp",
+            "src/GitignoreManager.cpp",
+            "src/wildmatch.c"
         ],
         "include_dirs": [
             "includes",

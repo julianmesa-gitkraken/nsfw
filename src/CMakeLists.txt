@@ -2,6 +2,9 @@
 set (NSFW_LIBRARY_SOURCES
     Queue.cpp
     NativeInterface.cpp
+    GitignoreParser.cpp
+    GitignoreManager.cpp
+    wildmatch.c
 )
 
 if (WIN32)
