@@ -1,7 +1,8 @@
 #include "../../includes/osx/FSEventsService.h"
 #include <iostream>
 
-FSEventsService::FSEventsService(std::shared_ptr<EventQueue> queue, std::string path, const std::vector<std::string> &excludedPaths):
+FSEventsService::FSEventsService(std::shared_ptr<EventQueue> queue, std::string path, const std::vector<std::string> &excludedPaths,
+  bool respectGitignore, const std::string &globalGitignorePath):
   mPath(path), mQueue(queue), mRootChanged(false) {
   mCaseSensitive = pathconf(path.c_str(), _PC_CASE_SENSITIVE) > 0;
   for (const std::string &excludedPath : excludedPaths) {
@@ -11,6 +12,10 @@ FSEventsService::FSEventsService(std::shared_ptr<EventQueue> queue, std::string 
       kCFStringEncodingUTF8
     );
     mExcludedPaths.push_back(str);
+  }
+
+  if (respectGitignore) {
+    mGitignoreManager.reset(new GitignoreManager(path, globalGitignorePath, mCaseSensitive));
   }
 
   mRunLoop = new RunLoop(this, path);
@@ -53,7 +58,8 @@ void FSEventsServiceCallback(
                       (eventFlags[i] & kFSEventStreamEventFlagItemXattrMod) == kFSEventStreamEventFlagItemXattrMod;
     bool isRenamed = (eventFlags[i] & kFSEventStreamEventFlagItemRenamed) == kFSEventStreamEventFlagItemRenamed;
 
-    if(!eventsService->isExcluded(paths[i])) {
+    bool isDir = (eventFlags[i] & kFSEventStreamEventFlagItemIsDir) == kFSEventStreamEventFlagItemIsDir;
+    if(!eventsService->isExcluded(paths[i], isDir)) {
       if (isCreated && !(isRemoved || isModified || isRenamed)) {
         eventsService->create(paths[i]);
       } else if (isRemoved && !(isCreated || isModified || isRenamed)) {
@@ -72,7 +78,7 @@ void FSEventsServiceCallback(
   }
 }
 
-bool FSEventsService::isExcluded(std::string filePath) {
+bool FSEventsService::isExcluded(std::string filePath, bool isDirectory) {
   uint32_t location = filePath.find_last_of("/");
   std::string directory = (location == 0) ? "" : filePath.substr(0, location);
   CFStringRef fileDirectory = CFStringCreateWithCString(
@@ -91,14 +97,30 @@ bool FSEventsService::isExcluded(std::string filePath) {
     CFIndex lenExclude = CFStringGetLength(excludedPath);
     if (lenDirectory >= lenExclude) {
       if (CFStringCompareWithOptions(fileDirectory, excludedPath, CFRangeMake(0, lenExclude), flags) == kCFCompareEqualTo) {
+        CFRelease(fileDirectory);
         return true;
       }
     }
   }
+  CFRelease(fileDirectory);
+
+  // Gitignore filtering (additive with excludedPaths, Decision #5)
+  if (mGitignoreManager && mGitignoreManager->isActive()) {
+    if (mGitignoreManager->isIgnored(filePath, isDirectory)) {
+      return true;
+    }
+  }
+
   return false;
 }
 
 void FSEventsService::create(std::string path) {
+  // Detect .gitignore file creation (Decision #1: dynamic reaction)
+  if (isGitignoreFile(path)) {
+    std::string directory, name;
+    splitFilePath(directory, name, path);
+    mGitignoreManager->addOrUpdateGitignore(directory);
+  }
   dispatch(CREATED, path);
 }
 
@@ -140,10 +162,22 @@ bool FSEventsService::isWatching() {
 }
 
 void FSEventsService::modify(std::string path) {
+  // Detect .gitignore file modification (Decision #1: dynamic reaction)
+  if (isGitignoreFile(path)) {
+    std::string directory, name;
+    splitFilePath(directory, name, path);
+    mGitignoreManager->addOrUpdateGitignore(directory);
+  }
   dispatch(MODIFIED, path);
 }
 
 void FSEventsService::remove(std::string path) {
+  // Detect .gitignore file deletion (Decision #1: dynamic reaction)
+  if (isGitignoreFile(path)) {
+    std::string directory, name;
+    splitFilePath(directory, name, path);
+    mGitignoreManager->removeGitignore(directory);
+  }
   dispatch(DELETED, path);
 }
 
@@ -170,8 +204,26 @@ void FSEventsService::rename(std::vector<std::string> &paths) {
            sideBExists = stat(fullSideB.c_str(), &renameSideB) == 0;
 
       if (sideAExists && !sideBExists) {
+        // Detect .gitignore being renamed (Decision #1: dynamic reaction)
+        if (mGitignoreManager && mGitignoreManager->isActive()) {
+          if (sideB == ".gitignore") {
+            mGitignoreManager->removeGitignore(binIterator->first);
+          }
+          if (sideA == ".gitignore") {
+            mGitignoreManager->addOrUpdateGitignore(binIterator->first);
+          }
+        }
         mQueue->enqueue(RENAMED, binIterator->first, sideB, binIterator->first, sideA);
       } else if (!sideAExists && sideBExists) {
+        // Detect .gitignore being renamed (Decision #1: dynamic reaction)
+        if (mGitignoreManager && mGitignoreManager->isActive()) {
+          if (sideA == ".gitignore") {
+            mGitignoreManager->removeGitignore(binIterator->first);
+          }
+          if (sideB == ".gitignore") {
+            mGitignoreManager->addOrUpdateGitignore(binIterator->first);
+          }
+        }
         mQueue->enqueue(RENAMED, binIterator->first, sideA, binIterator->first, sideB);
       } else {
         demangle(fullSideA);
@@ -198,6 +250,17 @@ void FSEventsService::splitFilePath(std::string &directory, std::string &name, c
     directory = (location == 0) ? "/" : path.substr(0, location);
     name = path.substr(location + 1);
   }
+}
+
+bool FSEventsService::isGitignoreFile(const std::string &path) {
+  if (!mGitignoreManager || !mGitignoreManager->isActive()) {
+    return false;
+  }
+  size_t lastSlash = path.find_last_of('/');
+  if (lastSlash == std::string::npos) {
+    return path == ".gitignore";
+  }
+  return path.substr(lastSlash + 1) == ".gitignore";
 }
 
 void FSEventsService::updateExcludedPaths(const std::vector<std::string> &excludedPaths) {

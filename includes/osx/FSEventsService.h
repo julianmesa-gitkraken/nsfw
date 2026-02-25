@@ -3,11 +3,13 @@
 
 #include "RunLoop.h"
 #include "../Queue.h"
+#include "../../includes/GitignoreManager.h"
 
 #include <CoreServices/CoreServices.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <map>
+#include <memory>
 #include <vector>
 #include <string>
 
@@ -24,7 +26,8 @@ class RunLoop;
 
 class FSEventsService {
 public:
-  FSEventsService(std::shared_ptr<EventQueue> queue, std::string path, const std::vector<std::string> &excludedPaths);
+  FSEventsService(std::shared_ptr<EventQueue> queue, std::string path, const std::vector<std::string> &excludedPaths,
+    bool respectGitignore = false, const std::string &globalGitignorePath = "");
 
   friend void FSEventsServiceCallback(
     ConstFSEventStreamRef streamRef,
@@ -48,7 +51,8 @@ private:
   void remove(std::string path);
   void rename(std::vector<std::string> &paths);
   void splitFilePath(std::string &directory, std::string &name, const std::string &path);
-  bool isExcluded(std::string filePath);
+  bool isExcluded(std::string filePath, bool isDirectory);
+  bool isGitignoreFile(const std::string &path);
 
   std::string mPath;
   RunLoop *mRunLoop;
@@ -56,6 +60,7 @@ private:
   std::vector<CFStringRef> mExcludedPaths;
   bool mRootChanged;
   bool mCaseSensitive;
+  std::unique_ptr<GitignoreManager> mGitignoreManager;
 };
 
 #endif
