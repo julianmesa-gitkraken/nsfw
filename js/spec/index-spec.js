@@ -1110,6 +1110,389 @@ describe('Node Sentinel File Watcher', function() {
     });
   });
 
+  describe('Gitignore support', function() {
+    const gitignoreWorkDir = path.join(workDir, 'gitignore-test');
+
+    beforeEach(async function() {
+      // Create a fresh directory with .git to activate gitignore
+      await fse.ensureDir(gitignoreWorkDir);
+      await fse.ensureDir(path.join(gitignoreWorkDir, '.git'));
+    });
+
+    it('filters events for files matching .gitignore patterns', async function() {
+      // Create .gitignore before starting watcher
+      await fse.writeFile(path.join(gitignoreWorkDir, '.gitignore'), '*.log\nbuild/\n');
+      await fse.ensureDir(path.join(gitignoreWorkDir, 'src'));
+
+      const TIMEOUT = 500;
+      let ignoredEvents = 0;
+      let trackedEvents = 0;
+
+      function findEvents(element) {
+        if (element.file === 'app.log' || element.file === 'debug.log') {
+          ignoredEvents++;
+        }
+        if (element.file === 'app.js') {
+          trackedEvents++;
+        }
+      }
+
+      let watch = await nsfw(
+        gitignoreWorkDir,
+        events => events.forEach(findEvents),
+        { debounceMS: 100, respectGitignore: true }
+      );
+
+      try {
+        await watch.start();
+        await sleep(TIMEOUT);
+        // Create a tracked file - should generate event
+        await fse.writeFile(path.join(gitignoreWorkDir, 'src', 'app.js'), 'console.log("hello");');
+        await sleep(TIMEOUT);
+        // Create ignored files - should NOT generate events
+        await fse.writeFile(path.join(gitignoreWorkDir, 'app.log'), 'log entry');
+        await fse.writeFile(path.join(gitignoreWorkDir, 'debug.log'), 'debug entry');
+        await sleep(TIMEOUT);
+
+        assert.ok(trackedEvents > 0, 'Should receive events for tracked files');
+        assert.equal(ignoredEvents, 0, 'Should not receive events for ignored files');
+      } finally {
+        await watch.stop();
+        watch = null;
+      }
+    });
+
+    it('does not filter when respectGitignore is false', async function() {
+      await fse.writeFile(path.join(gitignoreWorkDir, '.gitignore'), '*.log\n');
+
+      const TIMEOUT = 500;
+      let logEvents = 0;
+
+      function findEvents(element) {
+        if (element.file === 'app.log') {
+          logEvents++;
+        }
+      }
+
+      let watch = await nsfw(
+        gitignoreWorkDir,
+        events => events.forEach(findEvents),
+        { debounceMS: 100, respectGitignore: false }
+      );
+
+      try {
+        await watch.start();
+        await sleep(TIMEOUT);
+        await fse.writeFile(path.join(gitignoreWorkDir, 'app.log'), 'log entry');
+        await sleep(TIMEOUT);
+
+        assert.ok(logEvents > 0, 'Should receive events when respectGitignore is false');
+      } finally {
+        await watch.stop();
+        watch = null;
+      }
+    });
+
+    it('does not activate gitignore without .git directory', async function() {
+      const noGitDir = path.join(workDir, 'no-git-test');
+      await fse.ensureDir(noGitDir);
+      // No .git directory created
+      await fse.writeFile(path.join(noGitDir, '.gitignore'), '*.log\n');
+
+      const TIMEOUT = 500;
+      let logEvents = 0;
+
+      function findEvents(element) {
+        if (element.file === 'app.log') {
+          logEvents++;
+        }
+      }
+
+      let watch = await nsfw(
+        noGitDir,
+        events => events.forEach(findEvents),
+        { debounceMS: 100, respectGitignore: true }
+      );
+
+      try {
+        await watch.start();
+        await sleep(TIMEOUT);
+        await fse.writeFile(path.join(noGitDir, 'app.log'), 'log entry');
+        await sleep(TIMEOUT);
+
+        assert.ok(logEvents > 0, 'Should receive events when no .git directory exists');
+      } finally {
+        await watch.stop();
+        watch = null;
+      }
+    });
+
+    it('supports negation patterns', async function() {
+      await fse.writeFile(path.join(gitignoreWorkDir, '.gitignore'), '*.log\n!important.log\n');
+
+      const TIMEOUT = 500;
+      let ignoredLogEvents = 0;
+      let importantLogEvents = 0;
+
+      function findEvents(element) {
+        if (element.file === 'debug.log') {
+          ignoredLogEvents++;
+        }
+        if (element.file === 'important.log') {
+          importantLogEvents++;
+        }
+      }
+
+      let watch = await nsfw(
+        gitignoreWorkDir,
+        events => events.forEach(findEvents),
+        { debounceMS: 100, respectGitignore: true }
+      );
+
+      try {
+        await watch.start();
+        await sleep(TIMEOUT);
+        await fse.writeFile(path.join(gitignoreWorkDir, 'debug.log'), 'ignored');
+        await fse.writeFile(path.join(gitignoreWorkDir, 'important.log'), 'not ignored');
+        await sleep(TIMEOUT);
+
+        assert.equal(ignoredLogEvents, 0, 'Should not receive events for ignored .log files');
+        assert.ok(importantLogEvents > 0, 'Should receive events for negated pattern files');
+      } finally {
+        await watch.stop();
+        watch = null;
+      }
+    });
+
+    it('is additive with excludedPaths', async function() {
+      await fse.writeFile(path.join(gitignoreWorkDir, '.gitignore'), '*.log\n');
+      const excludedDir = path.join(gitignoreWorkDir, 'excluded');
+      await fse.ensureDir(excludedDir);
+
+      const TIMEOUT = 500;
+      let logEvents = 0;
+      let excludedEvents = 0;
+      let trackedEvents = 0;
+
+      function findEvents(element) {
+        if (element.file === 'app.log') {
+          logEvents++;
+        }
+        if (element.file === 'excluded.txt') {
+          excludedEvents++;
+        }
+        if (element.file === 'tracked.txt') {
+          trackedEvents++;
+        }
+      }
+
+      let watch = await nsfw(
+        gitignoreWorkDir,
+        events => events.forEach(findEvents),
+        {
+          debounceMS: 100,
+          respectGitignore: true,
+          excludedPaths: [excludedDir]
+        }
+      );
+
+      try {
+        await watch.start();
+        await sleep(TIMEOUT);
+        // Tracked file - should generate event
+        await fse.writeFile(path.join(gitignoreWorkDir, 'tracked.txt'), 'tracked');
+        await sleep(TIMEOUT);
+        // Gitignore-excluded file - should NOT generate event
+        await fse.writeFile(path.join(gitignoreWorkDir, 'app.log'), 'log');
+        await sleep(TIMEOUT);
+        // excludedPaths-excluded file - should NOT generate event
+        await fse.writeFile(path.join(excludedDir, 'excluded.txt'), 'excluded');
+        await sleep(TIMEOUT);
+
+        assert.ok(trackedEvents > 0, 'Should receive events for tracked files');
+        assert.equal(logEvents, 0, 'Should not receive events for gitignore-excluded files');
+        assert.equal(excludedEvents, 0, 'Should not receive events for excludedPaths files');
+      } finally {
+        await watch.stop();
+        watch = null;
+      }
+    });
+
+    it('dynamically reacts to .gitignore changes', async function() {
+      // Start without .gitignore
+      const TIMEOUT = 500;
+      let logEvents = 0;
+
+      function findEvents(element) {
+        if (element.file === 'app.log') {
+          logEvents++;
+        }
+      }
+
+      let watch = await nsfw(
+        gitignoreWorkDir,
+        events => events.forEach(findEvents),
+        { debounceMS: 100, respectGitignore: true }
+      );
+
+      try {
+        await watch.start();
+        await sleep(TIMEOUT);
+
+        // Create a .log file - should generate event (no .gitignore yet)
+        await fse.writeFile(path.join(gitignoreWorkDir, 'app.log'), 'log entry 1');
+        await sleep(TIMEOUT);
+        assert.ok(logEvents > 0, 'Should receive events before .gitignore is created');
+
+        // Now create .gitignore that ignores .log files
+        logEvents = 0;
+        await fse.writeFile(path.join(gitignoreWorkDir, '.gitignore'), '*.log\n');
+        await sleep(TIMEOUT);
+
+        // Modify the .log file - should NOT generate event now
+        await fse.writeFile(path.join(gitignoreWorkDir, 'app.log'), 'log entry 2');
+        await sleep(TIMEOUT);
+        assert.equal(logEvents, 0, 'Should not receive events after .gitignore is created');
+
+        // Remove .gitignore - events should come back
+        await fse.remove(path.join(gitignoreWorkDir, '.gitignore'));
+        await sleep(TIMEOUT);
+
+        await fse.writeFile(path.join(gitignoreWorkDir, 'app.log'), 'log entry 3');
+        await sleep(TIMEOUT);
+        assert.ok(logEvents > 0, 'Should receive events after .gitignore is removed');
+      } finally {
+        await watch.stop();
+        watch = null;
+      }
+    });
+
+    it('supports .git/info/exclude', async function() {
+      // Create .git/info/exclude
+      await fse.ensureDir(path.join(gitignoreWorkDir, '.git', 'info'));
+      await fse.writeFile(path.join(gitignoreWorkDir, '.git', 'info', 'exclude'), '*.secret\n');
+
+      const TIMEOUT = 500;
+      let secretEvents = 0;
+      let trackedEvents = 0;
+
+      function findEvents(element) {
+        if (element.file === 'passwords.secret') {
+          secretEvents++;
+        }
+        if (element.file === 'readme.txt') {
+          trackedEvents++;
+        }
+      }
+
+      let watch = await nsfw(
+        gitignoreWorkDir,
+        events => events.forEach(findEvents),
+        { debounceMS: 100, respectGitignore: true }
+      );
+
+      try {
+        await watch.start();
+        await sleep(TIMEOUT);
+        await fse.writeFile(path.join(gitignoreWorkDir, 'readme.txt'), 'hello');
+        await sleep(TIMEOUT);
+        await fse.writeFile(path.join(gitignoreWorkDir, 'passwords.secret'), 'secret');
+        await sleep(TIMEOUT);
+
+        assert.ok(trackedEvents > 0, 'Should receive events for tracked files');
+        assert.equal(secretEvents, 0, 'Should not receive events for .git/info/exclude patterns');
+      } finally {
+        await watch.stop();
+        watch = null;
+      }
+    });
+
+    it('supports nested .gitignore files', async function() {
+      // Root .gitignore ignores *.log
+      await fse.writeFile(path.join(gitignoreWorkDir, '.gitignore'), '*.log\n');
+      // Subdirectory .gitignore negates *.log
+      const subDir = path.join(gitignoreWorkDir, 'logs');
+      await fse.ensureDir(subDir);
+      await fse.writeFile(path.join(subDir, '.gitignore'), '!*.log\n');
+
+      const TIMEOUT = 500;
+      let rootLogEvents = 0;
+      let subLogEvents = 0;
+
+      function findEvents(element) {
+        if (element.file === 'root.log' && element.directory === gitignoreWorkDir) {
+          rootLogEvents++;
+        }
+        if (element.file === 'sub.log' && element.directory === subDir) {
+          subLogEvents++;
+        }
+      }
+
+      let watch = await nsfw(
+        gitignoreWorkDir,
+        events => events.forEach(findEvents),
+        { debounceMS: 100, respectGitignore: true }
+      );
+
+      try {
+        await watch.start();
+        await sleep(TIMEOUT);
+        // Root .log file - should be ignored
+        await fse.writeFile(path.join(gitignoreWorkDir, 'root.log'), 'ignored');
+        await sleep(TIMEOUT);
+        // Subdirectory .log file - should NOT be ignored (negated by nested .gitignore)
+        await fse.writeFile(path.join(subDir, 'sub.log'), 'not ignored');
+        await sleep(TIMEOUT);
+
+        assert.equal(rootLogEvents, 0, 'Root .log files should be ignored');
+        assert.ok(subLogEvents > 0, 'Subdirectory .log files should not be ignored (negated)');
+      } finally {
+        await watch.stop();
+        watch = null;
+      }
+    });
+
+    it('supports globalGitignorePath option', async function() {
+      // Create a custom global gitignore file
+      const globalGitignorePath = path.join(workDir, 'my-global-gitignore');
+      await fse.writeFile(globalGitignorePath, '*.tmp\n');
+
+      const TIMEOUT = 500;
+      let tmpEvents = 0;
+      let trackedEvents = 0;
+
+      function findEvents(element) {
+        if (element.file === 'cache.tmp') {
+          tmpEvents++;
+        }
+        if (element.file === 'readme.txt') {
+          trackedEvents++;
+        }
+      }
+
+      let watch = await nsfw(
+        gitignoreWorkDir,
+        events => events.forEach(findEvents),
+        { debounceMS: 100, respectGitignore: true, globalGitignorePath }
+      );
+
+      try {
+        await watch.start();
+        await sleep(TIMEOUT);
+        await fse.writeFile(path.join(gitignoreWorkDir, 'readme.txt'), 'hello');
+        await sleep(TIMEOUT);
+        await fse.writeFile(path.join(gitignoreWorkDir, 'cache.tmp'), 'temp data');
+        await sleep(TIMEOUT);
+
+        assert.ok(trackedEvents > 0, 'Should receive events for tracked files');
+        assert.equal(tmpEvents, 0, 'Should not receive events for global gitignore patterns');
+      } finally {
+        await watch.stop();
+        watch = null;
+      }
+    });
+  });
+
   describe('Garbage collection', function() {
     it('can garbage collect all instances', async function () {
       this.timeout(60000);
