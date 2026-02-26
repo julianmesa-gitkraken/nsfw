@@ -30,6 +30,7 @@ public:
   bool nodeExists(int wd);
   void removeDirectory(int wd);
   void renameDirectory(int fromWd, std::string fromName, int toWd, std::string toName);
+  void resyncWatches();
   const std::vector<std::string>& getExcludedPaths() const;
   void updateExcludedPaths(const std::vector<std::string> &excludedPaths);
   std::shared_ptr<GitignoreManager> getGitignoreManager() const;

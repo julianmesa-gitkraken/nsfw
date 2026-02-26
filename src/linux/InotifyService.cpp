@@ -45,6 +45,7 @@ void InotifyService::create(int wd, std::string name) {
       std::string dirPath;
       if (mTree->getPath(dirPath, wd)) {
         gitignoreManager->addOrUpdateGitignore(dirPath);
+        mTree->resyncWatches();
       }
     }
   }
@@ -112,6 +113,7 @@ void InotifyService::modify(int wd, std::string name) {
       std::string dirPath;
       if (mTree->getPath(dirPath, wd)) {
         gitignoreManager->addOrUpdateGitignore(dirPath);
+        mTree->resyncWatches();
       }
     }
   }
@@ -126,6 +128,7 @@ void InotifyService::remove(int wd, std::string name) {
       std::string dirPath;
       if (mTree->getPath(dirPath, wd)) {
         gitignoreManager->removeGitignore(dirPath);
+        mTree->resyncWatches();
       }
     }
   }
@@ -136,17 +139,23 @@ void InotifyService::rename(int fromWd, std::string fromName, int toWd, std::str
   // Detect .gitignore being renamed to/from (Decision #1: dynamic reaction)
   auto gitignoreManager = mTree->getGitignoreManager();
   if (gitignoreManager && gitignoreManager->isActive()) {
+    bool changedGitignore = false;
     if (fromName == ".gitignore") {
       std::string fromDirPath;
       if (mTree->getPath(fromDirPath, fromWd)) {
         gitignoreManager->removeGitignore(fromDirPath);
+        changedGitignore = true;
       }
     }
     if (toName == ".gitignore") {
       std::string toDirPath;
       if (mTree->getPath(toDirPath, toWd)) {
         gitignoreManager->addOrUpdateGitignore(toDirPath);
+        changedGitignore = true;
       }
+    }
+    if (changedGitignore) {
+      mTree->resyncWatches();
     }
   }
   dispatchRename(fromWd, fromName, toWd, toName);
@@ -172,6 +181,7 @@ void InotifyService::createDirectory(int wd, std::string name) {
       struct stat fileStat;
       if (stat(gitignorePath.c_str(), &fileStat) == 0 && S_ISREG(fileStat.st_mode)) {
         gitignoreManager->addOrUpdateGitignore(newDirPath);
+        mTree->resyncWatches();
       }
     }
   }

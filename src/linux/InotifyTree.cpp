@@ -320,6 +320,42 @@ void InotifyTree::renameDirectory(int fromWd, std::string fromName, int toWd, st
   }
 }
 
+void InotifyTree::resyncWatches() {
+  if (mRootWd < 0) {
+    return;
+  }
+
+  auto rootNode = mWatchByWd.find(mRootWd);
+  if (rootNode == mWatchByWd.end()) {
+    return;
+  }
+
+  const std::string rootPath = rootNode->second.fullPath;
+
+  std::vector<int> descriptorsToRemove;
+  descriptorsToRemove.reserve(mWatchByWd.size());
+
+  for (const auto &pair : mWatchByWd) {
+    if (pair.first != mRootWd) {
+      descriptorsToRemove.push_back(pair.first);
+    }
+  }
+
+  for (int wd : descriptorsToRemove) {
+    auto node = mWatchByWd.find(wd);
+    if (node == mWatchByWd.end()) {
+      continue;
+    }
+
+    mWdByPath.erase(node->second.fullPath);
+    mWatchedInodes.erase(node->second.inodeNumber);
+    inotify_rm_watch(mInotifyInstance, wd);
+    mWatchByWd.erase(node);
+  }
+
+  addDirectoryTree(rootPath, nullptr);
+}
+
 void InotifyTree::setError(std::string error) {
   mError = error;
 }
