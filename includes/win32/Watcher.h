@@ -17,7 +17,7 @@ class Watcher
   public:
     Watcher(std::shared_ptr<EventQueue> queue, const std::wstring &path, bool pathWasNtPrefixed,
       const std::vector<std::wstring> &excludedPaths,
-      bool respectGitignore = false, const std::string &utf8Path = "",
+      bool respectGitignore = true, const std::string &utf8Path = "",
       const std::string &globalGitignorePath = "");
     ~Watcher();
 

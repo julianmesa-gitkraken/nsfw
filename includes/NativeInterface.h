@@ -18,7 +18,7 @@ using NativeImplementation = InotifyService;
 class NativeInterface {
 public:
   NativeInterface(const std::string &path, const std::vector<std::string> &excludedPaths, std::shared_ptr<EventQueue> queue,
-    bool respectGitignore = false, const std::string &globalGitignorePath = "");
+    bool respectGitignore = true, const std::string &globalGitignorePath = "");
   ~NativeInterface();
 
   std::string getError();

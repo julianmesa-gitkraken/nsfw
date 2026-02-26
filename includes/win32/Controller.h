@@ -10,7 +10,7 @@ class EventQueue;
 class Controller {
   public:
     Controller(std::shared_ptr<EventQueue> queue, const std::string &path, const std::vector<std::string> &excludedPaths,
-      bool respectGitignore = false, const std::string &globalGitignorePath = "");
+      bool respectGitignore = true, const std::string &globalGitignorePath = "");
 
     std::string getError();
     bool hasErrored();

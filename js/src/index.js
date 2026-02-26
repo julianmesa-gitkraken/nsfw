@@ -53,7 +53,13 @@ function NSFWFilePoller(watchPath, eventCallback, debounceMS) {
 const buildNSFW = async (
   watchPath,
   eventCallback,
-  { debounceMS = 500, errorCallback: _errorCallback, excludedPaths = [], respectGitignore = false, globalGitignorePath } = {}
+  {
+    debounceMS = 500,
+    errorCallback: _errorCallback,
+    excludedPaths = [],
+    respectGitignore = true,
+    globalGitignorePath
+  } = {}
 ) => {
   if (Number.isInteger(debounceMS)) {
     if (debounceMS < 1 || debounceMS > 60000) {

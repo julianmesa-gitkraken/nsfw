@@ -27,7 +27,7 @@ class RunLoop;
 class FSEventsService {
 public:
   FSEventsService(std::shared_ptr<EventQueue> queue, std::string path, const std::vector<std::string> &excludedPaths,
-    bool respectGitignore = false, const std::string &globalGitignorePath = "");
+    bool respectGitignore = true, const std::string &globalGitignorePath = "");
 
   friend void FSEventsServiceCallback(
     ConstFSEventStreamRef streamRef,

@@ -10,7 +10,7 @@ NSFW::NSFW(const Napi::CallbackInfo &info):
   mQueue(std::make_shared<EventQueue>()),
   mPath(""),
   mRunning(false),
-  mRespectGitignore(false)
+  mRespectGitignore(true)
 {
   Napi::Env env = info.Env();
 

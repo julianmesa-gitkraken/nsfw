@@ -20,7 +20,7 @@ using EmitCreatedEvent = std::function<void(std::string, std::string)>;
 class InotifyTree {
 public:
   InotifyTree(int inotifyInstance, std::string path, const std::vector<std::string> &excludedPaths,
-    bool respectGitignore = false, const std::string &globalGitignorePath = "");
+    bool respectGitignore = true, const std::string &globalGitignorePath = "");
 
   void addDirectory(int wd, std::string name, EmitCreatedEvent emitCreatedEvent = nullptr);
   std::string getError();
